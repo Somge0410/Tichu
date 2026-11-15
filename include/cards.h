@@ -2,6 +2,9 @@
 #include "types.h"
 #include <string>
 #include <iostream>
+
+constexpr uint64_t LAST_FOUR_BITS_MASK = uint64_t{ 0xF } << 60;
+
 Color color(Cards  card) {
     if (card == Cards::Mahjong || card == Cards::Dog || card == Cards::Phoenix || card == Cards::Dragon) {
         return Color::None;
@@ -21,6 +24,13 @@ Color color(Cards  card) {
             return Color::None;
         }
 }
+
+constexpr CardSet cardBit(unsigned index) {
+    return CardSet{ 1 } << index;
+}
+constexpr CardSet cardBit(Cards card) {
+    return cardBit(static_cast<int>(card));
+}
 CardType get_CardType(Cards card) {
     if (card == Cards::Mahjong) {
         return CardType::Mahjong;
@@ -39,6 +49,29 @@ CardType get_CardType(Cards card) {
         int value_value = (cardValue - 3) / 4+2; // Calculate the value based on the card index
         return static_cast<CardType>(value_value);
     }
+}
+CardType get_CardType(CardStack stack) {
+    if(stack & cardBit(Cards::Phoenix)) {
+        return static_cast<CardType>((stack & LAST_FOUR_BITS_MASK)>>60); // Return Phoenix if present in the stack
+	}
+    int lsb = pop_lsb(stack);
+    Cards card = static_cast<Cards>(lsb);
+
+    return get_CardType(card);
+}
+CardStack push_CardType_To_last_bits(CardStack stack) {
+    CardType card_type = get_CardType(stack);
+    return (static_cast<CardStack>(card_type) << 60);
+}
+CardStack push_CardType_To_last_bits(Cards card) {
+	return push_CardType_To_last_bits(cardBit(card));
+}
+Cards get_card_from_stack(CardStack stack) {
+    if (popcount(stack) != 1) {
+        throw std::invalid_argument("Stack contains more than one card, cannot determine a single card.");
+	}
+    int lsb = pop_lsb(stack);
+	return static_cast<Cards>(lsb);
 }
 int get_Points(Cards card) {
     if (card == Cards::Dragon) {
@@ -117,12 +150,6 @@ constexpr bool operator >=(Cards lhs, Cards rhs) {
 constexpr bool operator >(Cards lhs, Cards rhs) {
     return !(lhs <= rhs);
 }
-constexpr CardSet cardBit(unsigned index) {
-    return CardSet{ 1 } << index;
-}
-constexpr CardSet cardBit(Cards card) {
-    return cardBit(static_cast<int>(card));
-}
 bool All_Same_color(CardSet card_set) {
     if (!card_set) return true;
     int lsb = pop_lsb(card_set);
@@ -171,8 +198,6 @@ void print(Cards card, uint64_t last_four_bits=0) {
     }
 	std::cout << "{ " << color_str << " " << type_str << " }" << std::endl;
 }
-constexpr uint64_t LAST_FOUR_BITS_MASK = uint64_t{ 0xF } << 60;
-
 void print(CardStack stack) {
 	std::cout << "{ ";
 	CardStack without_last_four_bits = stack & ~LAST_FOUR_BITS_MASK;

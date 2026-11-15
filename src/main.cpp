@@ -8,24 +8,22 @@
 
 int main() {
     CardStack hand = 0;
-    addCard(hand, Cards::Phoenix);
-    addCard(hand, Cards::Blue3);
-    addCard(hand, Cards::Black4);
+    addCard(hand, Cards::Mahjong);
+    addCard(hand, Cards::Red2);
+    addCard(hand, Cards::Green4);
+	addCard(hand, Cards::Blue3);
+    addCard(hand, Cards::Blue4);
+    addCard(hand, Cards::Green5);
     addCard(hand, Cards::Blue5);
-	addCard(hand, Cards::Black6);
-    addCard(hand, Cards::Blue6);/*
-    addCard(hand, Cards::Black10);
-    addCard(hand, Cards::Green10);
     addCard(hand, Cards::Black7);
-    addCard(hand, Cards::Red10);
-    addCard(hand, Cards::Green10);
-    addCard(hand, Cards::GreenAce);
-    addCard(hand, Cards::BlackAce);
-    addCard(hand, Cards::RedAce);
-    addCard(hand, Cards::Dragon);*/
+    addCard(hand, Cards::Red8);
+    addCard(hand, Cards::Green9);
+    addCard(hand, Cards::RedQueen);
+    addCard(hand, Cards::GreenKing);
+    addCard(hand, Cards::BlackKing);
+    addCard(hand, Cards::BlueAce);
     print(hand);
-    std::vector<CardStack> moves;
-	generate_Pairs(hand, Cards::Red2, moves);
+	std::vector<CardStack> moves = generate_moves(hand, 0, Cards::Dog, MoveType::NotDefined);
     std::cout << "Generated moves: " << moves.size() << '\n';
     for (CardStack move : moves) {
         std::cout << move << '\n';

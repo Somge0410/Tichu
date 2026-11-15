@@ -5,8 +5,9 @@
 #include <bitset>
 void generate_Singles(const CardStack hand, const Cards highest_card, std::vector<CardStack>& moves) {
     for (int i = next_trumping_card_index(highest_card); (i < static_cast<int>(Cards::Count)) && i>-2; ++i) {
-        if (hand & cardBit(static_cast<int>(i))) {
-            moves.push_back(cardBit(static_cast<int>(i)));
+        if (i != static_cast<int>(Cards::Phoenix) &&
+            (hand & cardBit(i))) {
+            moves.push_back(cardBit(i));
         }
     }
     if (highest_card != Cards::Dragon) {
@@ -47,7 +48,8 @@ void generate_Pairs(const CardStack hand, const Cards highest_card, std::vector<
         generate_Singles(hand,highest_card, singles);
         for (CardStack single : singles) {
             if(!(single & (cardBit(Cards::Phoenix)| cardBit(Cards::Dragon) | cardBit(Cards::Mahjong) | cardBit(Cards::Dog)))) {
-                moves.push_back(single | cardBit(Cards::Phoenix));
+
+                moves.push_back(single | cardBit(Cards::Phoenix) | push_CardType_To_last_bits(single));
             }
         }
     }
@@ -85,7 +87,7 @@ void generate_Triples(const CardStack hand, const Cards highest_card, std::vecto
         std::vector<CardStack> pairs = {};
         generate_Pairs(hand & ~cardBit(Cards::Phoenix), highest_card, pairs);
         for (CardStack pair : pairs) {
-            moves.push_back(pair | cardBit(Cards::Phoenix));
+            moves.push_back(pair | cardBit(Cards::Phoenix) | push_CardType_To_last_bits(pair));
         }
     }
 
@@ -125,8 +127,9 @@ std::vector<CardStack> append_Straight_from_vector(const std::vector<CardStack> 
             continue; // Skip if Phoenix is not available and the element contains Phoenix
 		}
         CardStack element_copy = element;
+        CardStack Bits = 0;
         if (contains_phoenix) {
-            element_copy &= ~cardBit(Cards::Phoenix); // Remove Phoenix from the element copy
+            element_copy &= ~(cardBit(Cards::Phoenix) | LAST_FOUR_BITS_MASK); // Remove Phoenix and its metadata from the element copy
         }
         Cards next_highest;
         if(element_copy) {
@@ -135,6 +138,9 @@ std::vector<CardStack> append_Straight_from_vector(const std::vector<CardStack> 
         else {
             next_highest = static_cast<Cards>(next_trumping_card_index(highest_card));
 		}
+        if(contains_phoenix) {
+            Bits = push_CardType_To_last_bits(next_highest);
+		}
 		int next_value = static_cast<int>(get_CardType(next_highest));
 		int highest_value = static_cast<int>(get_CardType(highest_card));
         if(next_value!=highest_value+1) {
@@ -142,7 +148,8 @@ std::vector<CardStack> append_Straight_from_vector(const std::vector<CardStack> 
         }
 		subs=append_Straight_from_vector(vector, next_highest, length - 1,!contains_phoenix);
         for(CardStack sub_pair : subs) {
-            moves.push_back(element | sub_pair);
+
+            moves.push_back((element & ~LAST_FOUR_BITS_MASK) | sub_pair | Bits);
 		}
 	}
 
@@ -158,18 +165,33 @@ void generate_Straights(const CardStack hand, const Cards highest_card, std::vec
 	}
     for (CardStack single : singles) {
         CardStack single_copy = single;
-		bool is_single_phoenix = (single & cardBit(Cards::Phoenix));
-        Cards next_highest = static_cast<Cards>(pop_lsb(single_copy));
-        if (is_single_phoenix) {
-			next_highest = static_cast<Cards>(next_trumping_card_index(highest_card));
+        if (single & cardBit(Cards::Phoenix)) {
+			int first_rank = std::max(2, static_cast<int>(get_CardType(highest_card)) + 1);
+			int last_rank = 15 - length;
+          for(int rank=first_rank;rank<=last_rank;rank++) {
+                Cards next_highest = static_cast<Cards>(3+4*(rank-2));
+                if (next_highest == Cards::Dragon || next_highest==Cards::Dog) break;
+                std::vector<CardStack> sub_straights = append_Straight_from_vector(singles, next_highest, length - 1, false);
+                for(CardStack sub_straight : sub_straights) {
+                    straights.push_back(
+                        (single & ~LAST_FOUR_BITS_MASK) |
+                        sub_straight |
+                        push_CardType_To_last_bits(next_highest)
+                    );
+                }
+		  }
         }
-		std::vector<CardStack> sub_straights = append_Straight_from_vector(singles, next_highest, length - 1,!is_single_phoenix);
-        for(CardStack sub_straight : sub_straights) {
-            straights.push_back(single | sub_straight);
-		}
+        else {
+            Cards next_highest = static_cast<Cards>(pop_lsb(single_copy));
+            std::vector<CardStack> sub_straights = append_Straight_from_vector(singles, next_highest, length - 1, true);
+            for (CardStack sub_straight : sub_straights) {
+                straights.push_back(single | sub_straight);
+            }
+        }
     }
+
     for (CardStack straight : straights) {
-        if (popcount(straight) == length) {
+        if (popcount(straight&~LAST_FOUR_BITS_MASK) == length) {
             if (same_color) {
                 if (All_Same_color(straight)) {
                     moves.push_back(straight);
@@ -205,7 +227,7 @@ void generate_Straights_of_Pairs(const CardStack hand, const Cards highest_card,
 		}
 	}
     for (CardStack straight_of_pairs : straights_of_pairs) {
-        if (popcount(straight_of_pairs) == length * 2) {
+        if (popcount(straight_of_pairs & ~LAST_FOUR_BITS_MASK) == length * 2) {
             moves.push_back(straight_of_pairs);
         }
     }
