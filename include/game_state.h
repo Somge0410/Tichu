@@ -1,6 +1,9 @@
 ﻿#pragma once
 #include "types.h"
-
+#include <algorithm>
+#include <random>
+#include <stdexcept>
+#include <vector>
 
 class GameKnowlege {
 public:
@@ -24,11 +27,17 @@ public:
         tichu.fill(false);
         grandTichu.fill(false);
     }
-    void set_tichu(const Tichu new_tichu, PlayerID id) {
+    void set_tichu(const Tichu new_tichu) {
         tichu = new_tichu;
     }
-    void set_grand_tichu(const GrandTichu new_grand_tichu, PlayerID id) {
+    void set_grand_tichu(const GrandTichu new_grand_tichu) {
 		grandTichu = new_grand_tichu;
+    }
+    void set_tichu(bool value, PlayerID player) {
+        tichu[player] = value;
+    }
+    void set_grand_tichu(bool value,PlayerID player) {
+        grandTichu[player] = value;
     }
     void set_player_turn(PlayerID new_turn) {
         turn = new_turn;
@@ -38,6 +47,34 @@ public:
 	}
     void set_points(const Points new_points) {
         points = new_points;
+	}
+    CardStack random_unkown_cards(std::size_t count, std::mt19937& rng) const {
+		std::vector<int> unkown_cards;
+        for (int i = 0; i < static_cast<int>(Cards::Count); ++i) {
+            if(cardLocations[i] == Locations::Unkown) {
+                unkown_cards.push_back(i);
+			}
+        }
+        if (count > unkown_cards.size()) {
+			throw std::invalid_argument("Not enough unknown cards to select from.");
+        }
+		std::shuffle(unkown_cards.begin(), unkown_cards.end(), rng);
+        CardStack result = 0;
+        for(std::size_t i = 0; i < count; ++i) {
+            result |= (CardStack{ 1 } << unkown_cards[i]);
+		}
+    }
+    Standings get_standings() const {
+        return standings;
+	}
+    GrandTichu get_grand_tichu() const {
+        return grandTichu;
+    }
+    Tichu get_tichu() const {
+		return tichu;
+    }
+    CardLocations get_card_locations() const {
+        return cardLocations;
 	}
 private:
     CardLocations cardLocations={};
@@ -66,11 +103,15 @@ public:
         }
 
     }
-    void ReceiveTichuInfo(const Tichu tichu, const GrandTichu grandTichu,PlayerID globalId) {
-		PlayerID local_id = convert_global_to_local(globalId);
-        gameKnowlege.set_tichu(tichu, local_id);
-        gameKnowlege.set_grand_tichu(grandTichu, local_id);
+    void ReceiveTichuInfo(const Tichu tichu) {
+		Tichu local_tichu = convert_global_to_local(tichu);
+        gameKnowlege.set_tichu(local_tichu);
     }
+    void ReceiveGrandTichuInfo(const GrandTichu grandTichu) {
+        GrandTichu local_grand_tichu = convert_global_to_local(grandTichu);
+        gameKnowlege.set_grand_tichu(local_grand_tichu);
+	}
+
     CardStack announce_move_to_table() {
         remove_cards_from_hand(0); //TODO
         return 0; //TODO
@@ -186,22 +227,50 @@ private:
         }
         return local_points;
 	}
-
+    GrandTichu convert_global_to_local(GrandTichu global_grand_tichu) {
+        GrandTichu local_grand_tichu;
+        for (int i = 0; i < 4; ++i) {
+            local_grand_tichu[i] = global_grand_tichu[(i + id) % 4];
+        }
+        return local_grand_tichu;
+	}
 };
 class Game {
 public:
+    void play_game();
 private: 
+    void play_round() {
+        gameKnowledge.clear();
+        for (int id = 0; id < 4; ++id) {
+            give_random_cards_to_player(id, 8);
+            gameKnowledge.set_grand_tichu(id, request_player_for_grand_tichu(id));
+        }
+        for (int id = 0; id < 4; ++id) {
+            notify_player_of_grand_tichu(id);
+        }
+        for (int id = 0; id < 4; ++id) {
+            give_random_cards_to_player(id, 4);
+            gameKnowledge.set_tichu(id, request_player_for_tichu(id));
+        }
+        for (int id = 0; id < 4; ++id) {
+            notify_player_of_tichu(id);
+        }
+        std::array<std::array<CardStack, 3>, 4> changes;
+        for (int id = 0; id < 4; ++id) {
+            changes[id] = request_player_for_change(id);
+        }
+        for (int from = 0; from < 4; ++from) {
+            for (int to = 0; to < 3; ++to) {
+                PlayerID target_id = (from + 2 * to - 1) % 4;
+                notify_player_of_card_change(target_id, changes[from][to], static_cast<Locations>(static_cast<int>(Locations::P1Hand) + target_id));
+            }
+        }
+    }
 	std::array<Player, 4> players = { Player(0), Player(1), Player(2), Player(3) };
-
-    CardLocations cardLocations = {};
-    Standings standings = { 0, 0 };
-    Points points = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-    Tichu tichu = { false, false, false, false };
-    GrandTichu  grandTichu = { false, false, false, false };
-    PlayerID turn;
-    PlayerID player_who_played_cards_on_table;
+	GameKnowlege gameKnowledge;
     void notify_player_of_card_change(PlayerID id, CardStack stack, Locations global_location) {
         players[id].ReceiveCardLocationChangeInfo(stack, global_location);
+		gameKnowledge.give_cards_to_Location(stack, global_location);
 	}
     void notify_player_of_turn(PlayerID id) {
 		players[id].receive_turn_info(turn);
@@ -210,8 +279,14 @@ private:
         players[id].receive_last_player_info(player_who_played_cards_on_table);
 	}
     void notify_player_of_points(PlayerID id) {
-        players[id].receive_standings(standings);
+        players[id].receive_standings(gameKnowledge.get_standings());
 	}
+    void notify_player_of_grand_tichu(PlayerID id) {
+        players[id].ReceiveTichuInfo(gameKnowledge.get_grand_tichu());
+    }
+    void notify_player_of_tichu(PlayerID id) {
+		players[id].ReceiveTichuInfo(gameKnowledge.get_tichu());
+    }
     bool request_player_for_tichu(PlayerID id) {
         return players[id].announce_tichu();
     }
@@ -223,9 +298,20 @@ private:
         // Process the move and update game state
         return true; // Return true if the move was valid, false otherwise
 	}
-    bool request_player_for_change(PlayerID id) {
+    std::array<CardStack, 3> request_player_for_change(PlayerID id) {
         std::array<CardStack, 3> change = players[id].announce_change();
         // Process the change and update game state
-        return true; // Return true if the change was valid, false otherwise
+        return change; // Return the change
+	}
+	std::mt19937 rng{std::random_device{}()};
+    void give_random_cards_to_player(PlayerID id, size_t count) {
+        CardStack stack = gameKnowledge.random_unkown_cards(count, rng);
+        notify_player_of_card_change(id, stack, static_cast<Locations>(static_cast<int>(Locations::P1Hand) + id));
+	}
+    PlayerID determine_starting_player() {
+		return gameKnowledge.get_card_locations()[static_cast<int>(Cards::Mahjong)];
+    }
+    PlayerID determine_next_player(PlayerID current_player) {
+        return (current_player + 1) % 4;
 	}
 };
