@@ -1,0 +1,186 @@
+﻿#pragma once
+#include "types.h"
+#include <string>
+#include <iostream>
+Color color(Cards  card) {
+    if (card == Cards::Mahjong || card == Cards::Dog || card == Cards::Phoenix || card == Cards::Dragon) {
+        return Color::None;
+    }
+    int cardValue = static_cast<int>(card);
+    int color_value = (cardValue - 3) % 4;
+        switch (color_value) {
+        case 0:
+            return Color::Blue;
+        case 1:
+            return Color::Green;
+        case 2:
+            return Color::Red;
+        case 3:
+            return Color::Black;
+        default:
+            return Color::None;
+        }
+}
+CardType get_CardType(Cards card) {
+    if (card == Cards::Mahjong) {
+        return CardType::Mahjong;
+    }
+    else if (card == Cards::Dog) {
+        return CardType::Dog;
+    }
+    else if (card == Cards::Phoenix) {
+        return CardType::Phoenix;
+    }
+    else if (card == Cards::Dragon) {
+        return CardType::Dragon;
+    }
+    else {
+        int cardValue = static_cast<int>(card);
+        int value_value = (cardValue - 3) / 4+2; // Calculate the value based on the card index
+        return static_cast<CardType>(value_value);
+    }
+}
+int get_Points(Cards card) {
+    if (card == Cards::Dragon) {
+        return 25;
+    }
+    else if (card == Cards::Mahjong) {
+        return 0;
+    }
+    else if (card == Cards::Phoenix) {
+        return -25;
+    }
+    else if (card == Cards::Dog) {
+        return 0;
+    }
+    else {
+        CardType cardValue = get_CardType(card);
+        if (cardValue == CardType::Five) {
+            return 5;
+        }
+        else if (cardValue == CardType::Ten || cardValue == CardType::King) {
+            return 10;
+        }
+        else {
+            return 0;
+        }
+    }
+}
+int Index(Cards card) {
+    return static_cast<int>(card);
+}
+int next_trumping_card_index(Cards card){
+    if(card == Cards::Dragon) {
+        return -2; // No card can trump the Dragon
+    }
+    else if (card == Cards::Phoenix) {
+        return Index(Cards::Mahjong); // The Dragon trumps the Phoenix
+    }
+    else if (card == Cards::Mahjong) {
+        return Index(Cards::Blue2); // The Dog trumps the Mahjong
+    }
+    else if (card == Cards::Dog) {
+        return Index(Cards::Phoenix); // The Phoenix trumps the Dog
+    }
+    else {
+        int index = Index(card);
+        int next_index = index + 4-(index-3)%4;
+        return next_index;
+    }
+}
+int second_next_trump_index(Cards card) {
+    Cards new_card = static_cast<Cards>(next_trumping_card_index(card));
+    return next_trumping_card_index(new_card);
+}
+
+constexpr bool operator<=(CardType lhs, CardType rhs) {
+    return static_cast<int>(lhs) <= static_cast<int>(rhs);
+}
+constexpr bool operator<(CardType lhs, CardType rhs) {
+    return lhs <= rhs && lhs != rhs;
+}
+constexpr bool operator>=(CardType lhs, CardType rhs) {
+    return !(lhs < rhs);
+}
+constexpr bool operator>(CardType lhs, CardType rhs) {
+    return !(lhs <= rhs);
+}
+constexpr bool operator <=(Cards lhs, Cards rhs) {
+    return CardType(lhs) <= CardType(rhs);
+}
+constexpr bool operator <(Cards lhs, Cards rhs) {
+    return CardType(lhs) < CardType(rhs);
+}
+constexpr bool operator >=(Cards lhs, Cards rhs) {
+    return !(lhs < rhs);
+}
+constexpr bool operator >(Cards lhs, Cards rhs) {
+    return !(lhs <= rhs);
+}
+constexpr CardSet cardBit(unsigned index) {
+    return CardSet{ 1 } << index;
+}
+constexpr CardSet cardBit(Cards card) {
+    return cardBit(static_cast<int>(card));
+}
+bool All_Same_color(CardSet card_set) {
+    if (!card_set) return true;
+    int lsb = pop_lsb(card_set);
+    Color first_color = color(static_cast<Cards>(lsb));
+    while (card_set) {
+        lsb = pop_lsb(card_set);
+        if (first_color != color(static_cast<Cards>(lsb))) return false;
+    }
+    return true;
+}
+bool is_bomb(CardSet card_set) {
+    return popcount(card_set) >= 4 && All_Same_color(card_set);
+}
+void addCard(CardStack& stack, Cards card) {
+    int cardValue = static_cast<int>(card);
+    stack |= (1ULL << cardValue);
+}
+void removeCard(CardStack& stack, Cards card) {
+    int cardValue = static_cast<int>(card);
+    stack &= ~(1ULL << cardValue);
+}
+
+
+void print(Cards card, uint64_t last_four_bits=0) {
+    Color color_card = color(card);
+	CardType card_type = get_CardType(card);
+    std::string color_str;
+    switch (color_card) {
+        case Color::Blue: color_str = "Blue"; break;
+        case Color::Green: color_str = "Green"; break;
+        case Color::Red: color_str = "Red"; break;
+        case Color::Black: color_str = "Black"; break;
+        default: color_str = ""; break;
+    }
+    std::string type_str;
+    switch (card_type) {
+        case CardType::Dog: type_str = "Dog"; break;
+        case CardType::Phoenix: type_str = "Phoenix=" + std::to_string(last_four_bits >> 60); break;
+        case CardType::Mahjong: type_str = "Mahjong"; break;
+        case CardType::Dragon: type_str = "Dragon"; break;
+		case CardType::Ace: type_str = "Ace"; break;
+		case CardType::King: type_str = "King"; break;
+		case CardType::Queen: type_str = "Queen"; break;
+		case CardType::Jack: type_str = "Jack"; break;
+        default: type_str = std::to_string(static_cast<int>(card_type)); break;
+    }
+	std::cout << "{ " << color_str << " " << type_str << " }" << std::endl;
+}
+constexpr uint64_t LAST_FOUR_BITS_MASK = uint64_t{ 0xF } << 60;
+
+void print(CardStack stack) {
+	std::cout << "{ ";
+	CardStack without_last_four_bits = stack & ~LAST_FOUR_BITS_MASK;
+	CardStack last_four_bits = stack & LAST_FOUR_BITS_MASK;
+    while(without_last_four_bits){
+        int lsb = pop_lsb(without_last_four_bits);
+		print(static_cast<Cards>(lsb),last_four_bits);
+	}
+	std::cout << " }" << std::endl;
+    return;
+}
