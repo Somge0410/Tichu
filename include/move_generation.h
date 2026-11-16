@@ -269,10 +269,8 @@ std::vector<CardStack> generate_moves(const CardStack hand, const CardStack tabl
     if (hand_cards < active_cards) {
         return moves; // Not enough cards to play
     }
-    CardStack hand_helper = hand;
-    Cards highest_hand_card = static_cast<Cards>(pop_lsb(hand_helper));
-    if (get_CardType(highest_hand_card) <= get_CardType(highest_card)) {
-        return moves; // No card in hand can beat the highest card on the table
+    if (table_face == 0 && (hand & cardBit(Cards::Dog))) {
+        moves.push_back(cardBit(Cards::Dog));
     }
     generate_Bombs(hand, highest_card, active_cards, moves, type);
 

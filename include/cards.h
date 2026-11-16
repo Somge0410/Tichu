@@ -99,6 +99,15 @@ int get_Points(Cards card) {
         }
     }
 }
+int get_Points(CardStack stack) {
+    int total_points = 0;
+    while (stack) {
+        int lsb = pop_lsb(stack);
+        Cards card = static_cast<Cards>(lsb);
+        total_points += get_Points(card);
+    }
+    return total_points;
+}
 int Index(Cards card) {
     return static_cast<int>(card);
 }
@@ -208,4 +217,10 @@ void print(CardStack stack) {
 	}
 	std::cout << " }" << std::endl;
     return;
+}
+Cards highest_card_in_stack(const CardStack& stack) {
+    return Cards::Dog;
+}
+MoveType determine_move_type(const CardStack& stack) {
+    return MoveType::NotDefined;
 }
