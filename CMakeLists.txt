@@ -8,3 +8,7 @@ add_executable(Tichu
 
 target_include_directories(Tichu PRIVATE include)
 target_compile_features(Tichu PRIVATE cxx_std_17)
+
+if(MSVC)
+    target_link_options(Tichu PRIVATE "$<$<CONFIG:RelWithDebInfo>:/PROFILE>")
+endif()
