@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <cstdint>
 #include <array>
+#include <stdexcept>
 #include <vector>
 enum class Cards {
     Dog = 0,
@@ -87,6 +88,25 @@ enum class CardType {
 	Ace = 14,
 	Dragon = 16,
 };
+enum class Beat_Value {
+    Dog = 0,
+    Mahjong = 1,
+	Two = 2,
+    Three = 3,
+    Four = 4,
+    Five = 5,
+    Six = 6,
+    Seven = 7,
+    Eight = 8,
+    Nine = 9,
+    Ten = 10,
+    Jack = 11,
+    Queen = 12,
+	King = 13,
+    Ace = 14,
+    Phoenix = 15,
+	Dragon = 16,
+};
 enum Locations {
     P1Hand,
     P2Hand,
@@ -109,7 +129,14 @@ enum MoveType {
     Bomb,
 	NotDefined
 };
+
 using CardStack = std::uint64_t;
+struct MoveInfo {
+    CardStack cards = 0;
+    MoveType type = MoveType::NotDefined;
+    Beat_Value beat_value = Beat_Value::Dog;
+    int length = 0;
+};
 using CardSet = std::uint64_t;
 using CardLocations = std::array<Locations, 57>;
 using Points = std::array<int, 10>;
@@ -129,6 +156,16 @@ constexpr int pop_lsb(CardStack& stack) {
     return lsb;
 
 }
+constexpr int lsb(const CardStack& stack) {
+    if (stack == 0) return -1;
+    int lsb = 0;
+    CardStack bit = 1;
+    while ((stack & bit) == 0) {
+        bit <<= 1;
+        ++lsb;
+    }
+    return lsb;
+}
 constexpr int popcount(CardStack stack) {
     int count = 0;
     while (stack != 0) {
@@ -136,4 +173,26 @@ constexpr int popcount(CardStack stack) {
         ++count;
     }
     return count;
+}
+Beat_Value get_beat_value(Cards card) {
+    switch (card) {
+        case Cards::Dog:
+            return Beat_Value::Dog;
+        case Cards::Mahjong:
+            return Beat_Value::Mahjong;
+        case Cards::Phoenix:
+            return Beat_Value::Phoenix;
+        case Cards::Dragon:
+            return Beat_Value::Dragon;
+        default:
+            return static_cast<Beat_Value>((static_cast<int>(card) - 3) / 4 + 2);
+    }
+}
+Beat_Value get_beat_value(CardStack stack) {
+    if (popcount(stack) != 1) {
+        throw std::invalid_argument("Stack contains more than one card, cannot determine a single card.");
+    }
+    int lsb_index = lsb(stack);
+    Cards card = static_cast<Cards>(lsb_index);
+    return get_beat_value(card);
 }

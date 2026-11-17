@@ -218,9 +218,3 @@ void print(CardStack stack) {
 	std::cout << " }" << std::endl;
     return;
 }
-Cards highest_card_in_stack(const CardStack& stack) {
-    return Cards::Dog;
-}
-MoveType determine_move_type(const CardStack& stack) {
-    return MoveType::NotDefined;
-}

@@ -12,18 +12,14 @@ public:
     GameKnowlege() {
         clear();
     }
-    void give_cards_to_Location(CardStack stack, Locations location) {
+    void give_cards_to_Location(const MoveInfo& move, Locations location) {
         if (location == Locations::Table) {
-			table_face |= stack;
-            highest_card = highest_card_in_stack(stack);
-			move_type = determine_move_type(stack);
+            table_face = move;
         }
         if(location == Locations::P1Bank || location == Locations::P2Bank || location == Locations::P3Bank || location == Locations::P4Bank) {
-            table_face = 0;
-			highest_card = Cards::Dog;
-			move_type = MoveType::NotDefined;
-		}
-        CardStack cards = stack & ((CardStack{ 1 } << static_cast<int>(Cards::Count)) - 1);
+            table_face = {};
+        }
+        CardStack cards = move.cards & ((CardStack{ 1 } << static_cast<int>(Cards::Count)) - 1);
         while (cards) {
             int cardIndex = pop_lsb(cards);
             if (cardIndex < 0 || cardIndex >= static_cast<int>(Cards::Count)) {
@@ -50,9 +46,7 @@ public:
 		first_finisher = -1;
         turn = 0;
         player_who_played_cards_on_table = -1;
-        table_face = 0;
-        highest_card = Cards::Dog;
-        move_type = MoveType::NotDefined;
+        table_face = {};
     }
     void set_tichu(const Tichu new_tichu) {
         tichu = new_tichu;
@@ -137,14 +131,8 @@ public:
     int get_points_in_Location(Locations location) const {
 		return points[static_cast<int>(location)];
     }
-    MoveType get_move_type() const {
-        return move_type;
-	}
-    CardStack get_table_face() const {
+    const MoveInfo& get_table_face() const {
         return table_face;
-    }
-    Cards get_highest_card() const {
-		return highest_card;
     }
 private:
     CardLocations cardLocations={};
@@ -156,9 +144,7 @@ private:
 	PlayerID player_who_played_cards_on_table;
 	std::array<int, 4> cards_in_hands = { 0, 0, 0, 0 };
     PlayerID first_finisher = -1;
-    CardStack table_face = 0;
-    Cards highest_card = Cards::Dog;
-	MoveType move_type = MoveType::NotDefined;
+    MoveInfo table_face;
 
 };
 class Player {
@@ -168,12 +154,14 @@ public:
         id = new_id;
         gameKnowlege.clear();
         hand = 0;
+        generated_moves.clear();
+        moves_already_generated = false;
     }
-    void ReceiveCardLocationChangeInfo(const CardStack stack, Locations global_location) {
+    void ReceiveCardLocationChangeInfo(const MoveInfo& move, Locations global_location) {
 		Locations local_location = convert_global_to_local(global_location);
-        gameKnowlege.give_cards_to_Location(stack, local_location);
+        gameKnowlege.give_cards_to_Location(move, local_location);
         if (Locations::P1Hand == local_location) {
-            add_cards_to_hand(stack);
+            add_cards_to_hand(move.cards);
         }
 
     }
@@ -186,16 +174,22 @@ public:
         gameKnowlege.set_grand_tichu(local_grand_tichu);
 	}
 
-    CardStack announce_move_to_table() {
-		MoveType move_type = gameKnowlege.get_move_type();
-        CardStack hand = this->hand;
-        if (hand == 0) return hand;
-		Cards highest_card = gameKnowlege.get_highest_card();
-		CardStack table_face = gameKnowlege.get_table_face();
-		std::vector<CardStack> moves = generate_moves(hand,table_face,highest_card, move_type);
-		CardStack move = moves.back();//TODO: Implement a better strategy for selecting a move
-		remove_cards_from_hand(move);
-        return move; 
+    MoveInfo announce_move_to_table() {
+        if (hand == 0) return {};
+        const MoveInfo& table_move = gameKnowlege.get_table_face();
+        // TODO: Implement a better strategy for selecting a move
+        for (auto it = generated_moves.rbegin(); it != generated_moves.rend(); ++it) {
+            const MoveInfo move = *it;
+            if (table_move.length == 0 ||
+                (move.type == MoveType::Bomb &&
+                 (table_move.type != MoveType::Bomb || move.length > table_move.length)) ||
+                (move.type == table_move.type && move.length == table_move.length &&
+                 move.beat_value > table_move.beat_value)) {
+                remove_cards_from_hand(move.cards);
+                return move;
+            }
+        }
+        return {};
     }
     std::array<CardStack,3> announce_change() {
         CardStack hand_copy = hand;
@@ -225,6 +219,10 @@ public:
     void receive_turn_info(PlayerID global_id) {
         PlayerID local_id = convert_global_to_local(global_id);
 		gameKnowlege.set_player_turn(local_id);
+        if (!moves_already_generated) {
+            generated_moves = generate_moves(hand);
+            moves_already_generated = true;
+        }
     }
     void receive_last_player_info(PlayerID global_id) {
         PlayerID local_id = convert_global_to_local(global_id);
@@ -249,7 +247,12 @@ private:
     GameKnowlege gameKnowlege;
     CardStack hand = 0;
     void remove_cards_from_hand(const CardStack stack) {
-        hand &= ~stack;
+        const CardStack cards = stack & ~LAST_FOUR_BITS_MASK;
+        hand &= ~cards;
+        generated_moves.erase(
+            std::remove_if(generated_moves.begin(), generated_moves.end(),
+                [cards](const MoveInfo& move) { return (move.cards & cards) != 0; }),
+            generated_moves.end());
     }
     void add_cards_to_hand(const CardStack stack) {
         hand |= stack;
@@ -309,6 +312,8 @@ private:
         }
         return local_grand_tichu;
 	}
+	bool moves_already_generated = false;
+	std::vector<MoveInfo> generated_moves;
 
 
 };
@@ -358,9 +363,9 @@ private:
             for (int to = 0; to < 3; ++to) {
                 PlayerID target_id = (from + 3- to) % 4;
                 Locations target_location = static_cast<Locations>(static_cast<int>(Locations::P1Hand) + target_id);
-                gameKnowledge.give_cards_to_Location(changes[from][to], target_location);
-                notify_player_of_card_change(target_id, changes[from][to], target_location);
-                notify_player_of_card_change(from, changes[from][to], target_location);
+                gameKnowledge.give_cards_to_Location({ changes[from][to] }, target_location);
+                notify_player_of_card_change(target_id, { changes[from][to] }, target_location);
+                notify_player_of_card_change(from, { changes[from][to] }, target_location);
             }
         }
         gameKnowledge.set_player_turn(determine_starting_player());
@@ -368,7 +373,7 @@ private:
         while (round_ongoing()) {
             PlayerID current_player = gameKnowledge.get_turn();
             notify_all_players_of_turn();
-            if (CardStack move = request_player_for_move(current_player)) {
+            if (const MoveInfo move = request_player_for_move(current_player); move.cards != 0) {
                 pass_count = 0;
                 if (!players[current_player].has_cards_in_hand() && gameKnowledge.get_first_finisher() == -1) {
                     gameKnowledge.set_first_finisher(current_player);
@@ -382,7 +387,7 @@ private:
                         gameKnowledge.set_tichu(true, (current_player + i + 1) % 4);
                         notify_all_player_of_tichu();
                     }
-                    if (CardStack bomb = request_player_for_bomb((current_player + i + 1) % 4)) {
+                    if (const MoveInfo bomb = request_player_for_bomb((current_player + i + 1) % 4); bomb.cards != 0) {
                         gameKnowledge.give_cards_to_Location(bomb, Locations::Table);
                         gameKnowledge.set_last_player((current_player + i + 1) % 4);
                         gameKnowledge.set_player_turn((current_player + i + 2) % 4);
@@ -403,8 +408,8 @@ private:
             if (pass_count >= 3) {
                 CardStack table_cards = gameKnowledge.get_cards_in_Location(Locations::Table);
                 Locations last_player_location = static_cast<Locations>(static_cast<int>(Locations::P1Bank) + gameKnowledge.get_last_player());
-                gameKnowledge.give_cards_to_Location(table_cards, last_player_location);
-                notify_all_players_of_card_change(table_cards, last_player_location);
+                gameKnowledge.give_cards_to_Location({ table_cards }, last_player_location);
+                notify_all_players_of_card_change({ table_cards }, last_player_location);
                 pass_count = 0;
             }
         }
@@ -413,12 +418,12 @@ private:
     }
     std::array<Player, 4> players = { Player(0), Player(1), Player(2), Player(3) };
     GameKnowlege gameKnowledge;
-    void notify_player_of_card_change(PlayerID id, CardStack stack, Locations global_location) {
-        players[id].ReceiveCardLocationChangeInfo(stack, global_location);
+    void notify_player_of_card_change(PlayerID id, const MoveInfo& move, Locations global_location) {
+        players[id].ReceiveCardLocationChangeInfo(move, global_location);
     }
-    void notify_all_players_of_card_change(CardStack stack, Locations global_location) {
+    void notify_all_players_of_card_change(const MoveInfo& move, Locations global_location) {
         for (int id = 0; id < 4; ++id) {
-            notify_player_of_card_change(id, stack, global_location);
+            notify_player_of_card_change(id, move, global_location);
         }
     }
     void notify_player_of_turn(PlayerID id) {
@@ -473,14 +478,12 @@ private:
     bool request_player_for_grand_tichu(PlayerID id) {
         return players[id].announce_grand_tichu();
     }
-    CardStack request_player_for_move(PlayerID id) {
-        CardStack move = players[id].announce_move_to_table();
-        // Process the move and update game state
-        return move; // Return the move
+    MoveInfo request_player_for_move(PlayerID id) {
+        return players[id].announce_move_to_table();
     }
-    CardStack request_player_for_bomb(PlayerID id) {
+    MoveInfo request_player_for_bomb(PlayerID id) {
         // Implement logic to request a bomb from the player
-        return 0; // Placeholder return value
+        return {};
     }
     std::array<CardStack, 3> request_player_for_change(PlayerID id) {
         std::array<CardStack, 3> change = players[id].announce_change();
@@ -491,8 +494,8 @@ private:
     void give_random_cards_to_player(PlayerID id, size_t count) {
         CardStack stack = gameKnowledge.random_unkown_cards(count, rng);
         Locations location = static_cast<Locations>(static_cast<int>(Locations::P1Hand) + id);
-        gameKnowledge.give_cards_to_Location(stack, location);
-        notify_player_of_card_change(id, stack, location);
+        gameKnowledge.give_cards_to_Location({ stack }, location);
+        notify_player_of_card_change(id, { stack }, location);
     }
     PlayerID determine_starting_player() {
         Locations mahjong_location = gameKnowledge.get_card_locations()[static_cast<int>(Cards::Mahjong)];
