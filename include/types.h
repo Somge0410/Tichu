@@ -196,3 +196,18 @@ Beat_Value get_beat_value(CardStack stack) {
     Cards card = static_cast<Cards>(lsb_index);
     return get_beat_value(card);
 }
+std::string get_location_name(Locations location) {
+    switch (location) {
+        case Locations::P1Hand: return "P1Hand";
+        case Locations::P2Hand: return "P2Hand";
+        case Locations::P3Hand: return "P3Hand";
+        case Locations::P4Hand: return "P4Hand";
+        case Locations::Table: return "Table";
+        case Locations::P1Bank: return "P1Bank";
+        case Locations::P2Bank: return "P2Bank";
+        case Locations::P3Bank: return "P3Bank";
+        case Locations::P4Bank: return "P4Bank";
+        case Locations::Unkown: return "Unkown";
+        default: throw std::invalid_argument("Invalid location value.");
+    }
+}

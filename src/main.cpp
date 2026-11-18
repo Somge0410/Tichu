@@ -33,6 +33,6 @@ int main() {
         }
 
         Game game = Game();
-        game.play_game(limit);
+        game.play_game<false>(limit);
     }
 }
