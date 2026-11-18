@@ -12,7 +12,7 @@ public:
     GameKnowlege() {
         clear();
     }
-    void give_cards_to_Location(const MoveInfo& move, Locations location) {
+    template<bool with_log=false> void give_cards_to_Location(const MoveInfo& move, Locations location) {
         if (location == Locations::Table) {
             table_face = move;
         }
@@ -20,6 +20,12 @@ public:
             table_face = {};
         }
         CardStack cards = move.cards & ((CardStack{ 1 } << static_cast<int>(Cards::Count)) - 1);
+        if constexpr (with_log) {
+            std::cout << "Giving " << " cards to " << location << std::endl;
+            std::cout << "Cards: ";
+            print(cards);
+            std::cout << std::endl;
+        }
         while (cards) {
             int cardIndex = pop_lsb(cards);
             if (cardIndex < 0 || cardIndex >= static_cast<int>(Cards::Count)) {
@@ -54,13 +60,26 @@ public:
     void set_grand_tichu(const GrandTichu new_grand_tichu) {
 		grandTichu = new_grand_tichu;
     }
-    void set_tichu(bool value, PlayerID player) {
+    template <bool with_log=false> void set_tichu(bool value, PlayerID player) {
+        if constexpr (with_log) {
+            if (value) {
+                std::cout << "Player " << static_cast<int>(player) << " called Tichu! " << std::endl;
+            }
+        }
         tichu[player] = value;
     }
-    void set_grand_tichu(bool value,PlayerID player) {
+    template<bool with_log=false> void set_grand_tichu(bool value,PlayerID player) {
+        if constexpr (with_log) {
+            if (value) {
+                std::cout << "Player " << static_cast<int>(player) << " called Grand -Tichu! " << std::endl;
+            }
+        }
         grandTichu[player] = value;
     }
-    void set_player_turn(PlayerID new_turn) {
+    template<bool with_log=false> void set_player_turn(PlayerID new_turn) {
+        if constexpr (with_log) {
+            std::cout << "It's now Player " << static_cast<int>(new_turn) << "'s turn." << std::endl;
+		}
         turn = new_turn;
 	}
     void set_last_player(PlayerID new_last_player) {
@@ -119,7 +138,7 @@ public:
     PlayerID get_first_finisher() const {
         return first_finisher;
 	}
-    void set_first_finisher(PlayerID player) {
+    template<bool with_log=false>void set_first_finisher(PlayerID player) {
         first_finisher = player;
 	}
     void add_Points_to_team(int team, int points_to_add) {
@@ -127,6 +146,7 @@ public:
             throw std::out_of_range("Team index out of range. Must be 0 or 1.");
         }
         standings[team] += points_to_add;
+
 	}
     int get_points_in_Location(Locations location) const {
 		return points[static_cast<int>(location)];
@@ -319,11 +339,11 @@ private:
 };
 class Game {
 public:
-    void play_game(int limit) {
+    template< bool with_log> void play_game(int limit) {
         const auto start_time = std::chrono::steady_clock::now();
 		Standings standings = gameKnowledge.get_standings();
         while ((standings[0]<limit && standings[1]<limit) || standings[0]==standings[1]) {
-            play_round();
+            play_round<with_log>();
             standings = gameKnowledge.get_standings();
         }
         if (standings[0] > standings[1]) {
@@ -338,20 +358,20 @@ public:
         return;
     }
 private:
-    void play_round() {
+    template< bool with_log=false> void play_round() {
         gameKnowledge.clear();
         for (PlayerID id = 0; id < 4; ++id) {
             players[id].set_current_player(id);
         }
         for (int id = 0; id < 4; ++id) {
-            give_random_cards_to_player(id, 8);
-            gameKnowledge.set_grand_tichu(request_player_for_grand_tichu(id), id);
+            give_random_cards_to_player<with_log>(id, 8);
+            gameKnowledge.set_grand_tichu<with_log>(request_player_for_grand_tichu(id), id);
         }
         notify_all_player_of_tichu();
 
         for (int id = 0; id < 4; ++id) {
-            give_random_cards_to_player(id, 6);
-            gameKnowledge.set_tichu(request_player_for_tichu(id), id);
+            give_random_cards_to_player<with_log>(id, 6);
+            gameKnowledge.set_tichu<with_log>(request_player_for_tichu(id), id);
         }
         notify_all_player_of_tichu();
 
@@ -363,7 +383,7 @@ private:
             for (int to = 0; to < 3; ++to) {
                 PlayerID target_id = (from + 3- to) % 4;
                 Locations target_location = static_cast<Locations>(static_cast<int>(Locations::P1Hand) + target_id);
-                gameKnowledge.give_cards_to_Location({ changes[from][to] }, target_location);
+                gameKnowledge.give_cards_to_Location<with_log>({ changes[from][to] }, target_location);
                 notify_player_of_card_change(target_id, { changes[from][to] }, target_location);
                 notify_player_of_card_change(from, { changes[from][to] }, target_location);
             }
@@ -376,21 +396,21 @@ private:
             if (const MoveInfo move = request_player_for_move(current_player); move.cards != 0) {
                 pass_count = 0;
                 if (!players[current_player].has_cards_in_hand() && gameKnowledge.get_first_finisher() == -1) {
-                    gameKnowledge.set_first_finisher(current_player);
+                    gameKnowledge.set_first_finisher<with_log>(current_player);
                     notify_all_players_of_first_finisher();
                 }
                 gameKnowledge.set_last_player(current_player);
-                gameKnowledge.give_cards_to_Location(move, Locations::Table);
+                gameKnowledge.give_cards_to_Location<with_log>(move, Locations::Table);
                 notify_all_players_of_card_change(move, Locations::Table);
                 for (int i = 0; i < 3; ++i) {
                     if (request_player_for_tichu((current_player + i + 1) % 4)) {
-                        gameKnowledge.set_tichu(true, (current_player + i + 1) % 4);
+                        gameKnowledge.set_tichu<with_log>(true, (current_player + i + 1) % 4);
                         notify_all_player_of_tichu();
                     }
                     if (const MoveInfo bomb = request_player_for_bomb((current_player + i + 1) % 4); bomb.cards != 0) {
-                        gameKnowledge.give_cards_to_Location(bomb, Locations::Table);
+                        gameKnowledge.give_cards_to_Location<with_log>(bomb, Locations::Table);
                         gameKnowledge.set_last_player((current_player + i + 1) % 4);
-                        gameKnowledge.set_player_turn((current_player + i + 2) % 4);
+                        gameKnowledge.set_player_turn<with_log>((current_player + i + 2) % 4);
                         notify_all_players_of_card_change(bomb, Locations::Table);
                         notify_all_players_of_last_player();
                         notify_all_players_of_turn();
@@ -402,18 +422,18 @@ private:
             else {
                 ++pass_count;
             }
-            gameKnowledge.set_player_turn(determine_next_player(current_player));
+            gameKnowledge.set_player_turn<with_log>(determine_next_player(current_player));
             notify_all_players_of_turn();
 
             if (pass_count >= 3) {
                 CardStack table_cards = gameKnowledge.get_cards_in_Location(Locations::Table);
                 Locations last_player_location = static_cast<Locations>(static_cast<int>(Locations::P1Bank) + gameKnowledge.get_last_player());
-                gameKnowledge.give_cards_to_Location({ table_cards }, last_player_location);
+                gameKnowledge.give_cards_to_Location<with_log>({ table_cards }, last_player_location);
                 notify_all_players_of_card_change({ table_cards }, last_player_location);
                 pass_count = 0;
             }
         }
-        finish_round();
+        finish_round<with_log>();
         return;
     }
     std::array<Player, 4> players = { Player(0), Player(1), Player(2), Player(3) };
@@ -491,10 +511,10 @@ private:
         return change; // Return the change
     }
     std::mt19937 rng{ std::random_device{}() };
-    void give_random_cards_to_player(PlayerID id, size_t count) {
+    template <bool with_log=false> void give_random_cards_to_player(PlayerID id, size_t count) {
         CardStack stack = gameKnowledge.random_unkown_cards(count, rng);
         Locations location = static_cast<Locations>(static_cast<int>(Locations::P1Hand) + id);
-        gameKnowledge.give_cards_to_Location({ stack }, location);
+        gameKnowledge.give_cards_to_Location<with_log>({ stack }, location);
         notify_player_of_card_change(id, { stack }, location);
     }
     PlayerID determine_starting_player() {
@@ -536,7 +556,7 @@ private:
         }
         return -1;
     };
-    void finish_round() {
+    template<bool with_logs=false>void finish_round() {
         const Standings standings_before = gameKnowledge.get_standings();
         int card_points_total = 0;
         for (int location = 0; location <= static_cast<int>(Locations::P4Bank); ++location) {
@@ -592,15 +612,18 @@ private:
             }
 		}
         const Standings standings_after = gameKnowledge.get_standings();
-        std::cout << "Round audit: card points=" << card_points_total
-                  << ", double win=" << double_win
-                  << ", card delta=(" << standings_after_cards[0] - standings_before[0]
-                  << ',' << standings_after_cards[1] - standings_before[1]
-                  << "), Tichu calls=" << tichu_count
-                  << ", Grand Tichu calls=" << grand_tichu_count
-                  << ", final delta=(" << standings_after[0] - standings_before[0]
-                  << ',' << standings_after[1] - standings_before[1]
-                  << "), standings=(" << standings_after[0] << ',' << standings_after[1] << ")\n";
+        if constexpr (with_logs) {
+            std::cout << "Round finished. Standings: Team 1 = " << standings_after[0] << ", Team 2 = " << standings_after[1] << std::endl;
+            std::cout << "Round audit: card points=" << card_points_total
+                << ", double win=" << double_win
+                << ", card delta=(" << standings_after_cards[0] - standings_before[0]
+                << ',' << standings_after_cards[1] - standings_before[1]
+                << "), Tichu calls=" << tichu_count
+                << ", Grand Tichu calls=" << grand_tichu_count
+                << ", final delta=(" << standings_after[0] - standings_before[0]
+                << ',' << standings_after[1] - standings_before[1]
+                << "), standings=(" << standings_after[0] << ',' << standings_after[1] << ")\n";
+        }
         notify_all_players_of_standings();
 	}
 };
