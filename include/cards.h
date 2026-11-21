@@ -1,29 +1,67 @@
 ﻿#pragma once
 #include "types.h"
-#include <string>
-#include <iostream>
+
+#if defined(_MSC_VER) && defined(_M_X64)
+#include <intrin.h>
+#endif
 
 constexpr uint64_t LAST_FOUR_BITS_MASK = uint64_t{ 0xF } << 60;
+constexpr CardStack CARD_BITS_MASK = (CardStack{ 1 } << static_cast<int>(Cards::Count)) - 1;
 
-Color color(Cards  card) {
-    if (card == Cards::Mahjong || card == Cards::Dog || card == Cards::Phoenix || card == Cards::Dragon) {
-        return Color::None;
-    }
-    int cardValue = static_cast<int>(card);
-    int color_value = (cardValue - 3) % 4;
-        switch (color_value) {
-        case 0:
-            return Color::Blue;
-        case 1:
-            return Color::Green;
-        case 2:
-            return Color::Red;
-        case 3:
-            return Color::Black;
-        default:
-            return Color::None;
-        }
+namespace card_bits {
+constexpr int popcount_fallback(CardStack stack) {
+    stack -= (stack >> 1) & CardStack{0x5555555555555555ULL};
+    stack = (stack & CardStack{0x3333333333333333ULL}) +
+        ((stack >> 2) & CardStack{0x3333333333333333ULL});
+    stack = (stack + (stack >> 4)) & CardStack{0x0F0F0F0F0F0F0F0FULL};
+    return static_cast<int>((stack * CardStack{0x0101010101010101ULL}) >> 56);
 }
+
+#if defined(_MSC_VER) && !defined(__clang__) && defined(_M_X64)
+int popcount_runtime(CardStack stack) noexcept;
+#endif
+}
+
+constexpr int lsb(const CardStack& stack) {
+    if (stack == 0) return -1;
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_ctzll(stack);
+#else
+#if defined(_MSC_VER) && defined(_M_X64) && _MSC_VER >= 1925
+    if (!__builtin_is_constant_evaluated()) {
+        unsigned long index = 0;
+        _BitScanForward64(&index, stack);
+        return static_cast<int>(index);
+    }
+#endif
+    int lsb = 0;
+    CardStack bit = 1;
+    while ((stack & bit) == 0) {
+        bit <<= 1;
+        ++lsb;
+    }
+    return lsb;
+#endif
+}
+constexpr int pop_lsb(CardStack& stack) {
+    const int index = lsb(stack);
+    stack &= stack - 1;
+    return index;
+}
+constexpr int popcount(CardStack stack) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_popcountll(stack);
+#else
+#if defined(_MSC_VER) && defined(_M_X64) && _MSC_VER >= 1925
+    if (!__builtin_is_constant_evaluated()) {
+        return card_bits::popcount_runtime(stack);
+    }
+#endif
+    return card_bits::popcount_fallback(stack);
+#endif
+}
+
+Color color(Cards  card);
 
 constexpr CardSet cardBit(unsigned index) {
     return CardSet{ 1 } << index;
@@ -31,109 +69,16 @@ constexpr CardSet cardBit(unsigned index) {
 constexpr CardSet cardBit(Cards card) {
     return cardBit(static_cast<int>(card));
 }
-CardType get_CardType(Cards card) {
-    if (card == Cards::Mahjong) {
-        return CardType::Mahjong;
-    }
-    else if (card == Cards::Dog) {
-        return CardType::Dog;
-    }
-    else if (card == Cards::Phoenix) {
-        return CardType::Phoenix;
-    }
-    else if (card == Cards::Dragon) {
-        return CardType::Dragon;
-    }
-    else {
-        int cardValue = static_cast<int>(card);
-        int value_value = (cardValue - 3) / 4+2; // Calculate the value based on the card index
-        return static_cast<CardType>(value_value);
-    }
-}
-CardType get_CardType(CardStack stack) {
-    if(stack & cardBit(Cards::Phoenix)) {
-        return static_cast<CardType>((stack & LAST_FOUR_BITS_MASK)>>60); // Return Phoenix if present in the stack
-	}
-    int lsb = pop_lsb(stack);
-    Cards card = static_cast<Cards>(lsb);
-
-    return get_CardType(card);
-}
-CardStack push_CardType_To_last_bits(CardStack stack) {
-    CardType card_type = get_CardType(stack);
-    return (static_cast<CardStack>(card_type) << 60);
-}
-CardStack push_CardType_To_last_bits(Cards card) {
-	return push_CardType_To_last_bits(cardBit(card));
-}
-Cards get_card_from_stack(CardStack stack) {
-    if (popcount(stack) != 1) {
-        throw std::invalid_argument("Stack contains more than one card, cannot determine a single card.");
-	}
-    int lsb = pop_lsb(stack);
-	return static_cast<Cards>(lsb);
-}
-int get_Points(Cards card) {
-    if (card == Cards::Dragon) {
-        return 25;
-    }
-    else if (card == Cards::Mahjong) {
-        return 0;
-    }
-    else if (card == Cards::Phoenix) {
-        return -25;
-    }
-    else if (card == Cards::Dog) {
-        return 0;
-    }
-    else {
-        CardType cardValue = get_CardType(card);
-        if (cardValue == CardType::Five) {
-            return 5;
-        }
-        else if (cardValue == CardType::Ten || cardValue == CardType::King) {
-            return 10;
-        }
-        else {
-            return 0;
-        }
-    }
-}
-int get_Points(CardStack stack) {
-    int total_points = 0;
-    while (stack) {
-        int lsb = pop_lsb(stack);
-        Cards card = static_cast<Cards>(lsb);
-        total_points += get_Points(card);
-    }
-    return total_points;
-}
-int Index(Cards card) {
-    return static_cast<int>(card);
-}
-int next_trumping_card_index(Cards card){
-    if(card == Cards::Dragon) {
-        return -2; // No card can trump the Dragon
-    }
-    else if (card == Cards::Phoenix) {
-        return Index(Cards::Mahjong); // The Dragon trumps the Phoenix
-    }
-    else if (card == Cards::Mahjong) {
-        return Index(Cards::Blue2); // The Dog trumps the Mahjong
-    }
-    else if (card == Cards::Dog) {
-        return Index(Cards::Phoenix); // The Phoenix trumps the Dog
-    }
-    else {
-        int index = Index(card);
-        int next_index = index + 4-(index-3)%4;
-        return next_index;
-    }
-}
-int second_next_trump_index(Cards card) {
-    Cards new_card = static_cast<Cards>(next_trumping_card_index(card));
-    return next_trumping_card_index(new_card);
-}
+CardType get_CardType(Cards card);
+CardType get_CardType(CardStack stack);
+CardStack push_CardType_To_last_bits(CardStack stack);
+CardStack push_CardType_To_last_bits(Cards card);
+Cards get_card_from_stack(CardStack stack);
+int get_Points(Cards card);
+int get_Points(CardStack stack);
+int Index(Cards card);
+int next_trumping_card_index(Cards card);
+int second_next_trump_index(Cards card);
 
 constexpr bool operator<=(CardType lhs, CardType rhs) {
     return static_cast<int>(lhs) <= static_cast<int>(rhs);
@@ -159,62 +104,15 @@ constexpr bool operator >=(Cards lhs, Cards rhs) {
 constexpr bool operator >(Cards lhs, Cards rhs) {
     return !(lhs <= rhs);
 }
-bool All_Same_color(CardSet card_set) {
-    if (!card_set) return true;
-    int lsb = pop_lsb(card_set);
-    Color first_color = color(static_cast<Cards>(lsb));
-    while (card_set) {
-        lsb = pop_lsb(card_set);
-        if (first_color != color(static_cast<Cards>(lsb))) return false;
-    }
-    return true;
-}
-bool is_bomb(CardSet card_set) {
-    return popcount(card_set) >= 4 && All_Same_color(card_set);
-}
-void addCard(CardStack& stack, Cards card) {
-    int cardValue = static_cast<int>(card);
-    stack |= (1ULL << cardValue);
-}
-void removeCard(CardStack& stack, Cards card) {
-    int cardValue = static_cast<int>(card);
-    stack &= ~(1ULL << cardValue);
-}
+bool All_Same_color(CardSet card_set);
+bool contains_rank(CardStack cards, CardType rank);
+void addCard(CardStack& stack, Cards card);
+void removeCard(CardStack& stack, Cards card);
 
 
-void print(Cards card, uint64_t last_four_bits=0) {
-    Color color_card = color(card);
-	CardType card_type = get_CardType(card);
-    std::string color_str;
-    switch (color_card) {
-        case Color::Blue: color_str = "Blue"; break;
-        case Color::Green: color_str = "Green"; break;
-        case Color::Red: color_str = "Red"; break;
-        case Color::Black: color_str = "Black"; break;
-        default: color_str = ""; break;
-    }
-    std::string type_str;
-    switch (card_type) {
-        case CardType::Dog: type_str = "Dog"; break;
-        case CardType::Phoenix: type_str = "Phoenix=" + std::to_string(last_four_bits >> 60); break;
-        case CardType::Mahjong: type_str = "Mahjong"; break;
-        case CardType::Dragon: type_str = "Dragon"; break;
-		case CardType::Ace: type_str = "Ace"; break;
-		case CardType::King: type_str = "King"; break;
-		case CardType::Queen: type_str = "Queen"; break;
-		case CardType::Jack: type_str = "Jack"; break;
-        default: type_str = std::to_string(static_cast<int>(card_type)); break;
-    }
-	std::cout << "{ " << color_str << " " << type_str << " }" << std::endl;
-}
-void print(CardStack stack) {
-	std::cout << "{ ";
-	CardStack without_last_four_bits = stack & ~LAST_FOUR_BITS_MASK;
-	CardStack last_four_bits = stack & LAST_FOUR_BITS_MASK;
-    while(without_last_four_bits){
-        int lsb = pop_lsb(without_last_four_bits);
-		print(static_cast<Cards>(lsb),last_four_bits);
-	}
-	std::cout << " }" << std::endl;
-    return;
-}
+void print(Cards card, uint64_t last_four_bits=0);
+void print(CardStack stack);
+void print(const MoveInfo& move);
+
+Beat_Value get_beat_value(Cards card);
+Beat_Value get_beat_value(CardStack stack);

@@ -1,8 +1,7 @@
 ﻿#pragma once
 #include <cstdint>
 #include <array>
-#include <stdexcept>
-#include <vector>
+#include <string>
 enum class Cards {
     Dog = 0,
     Phoenix = 1,
@@ -108,15 +107,15 @@ enum class Beat_Value {
 	Dragon = 16,
 };
 enum Locations {
+    P0Hand,
     P1Hand,
     P2Hand,
     P3Hand,
-    P4Hand,
     Table,
+    P0Bank,
     P1Bank,
     P2Bank,
     P3Bank,
-    P4Bank,
     Unkown,
 };
 enum MoveType {
@@ -144,70 +143,5 @@ using Standings = std::array<int, 2>;
 using PlayerID = int;
 using Tichu = std::array<bool, 4>;
 using GrandTichu = std::array<bool, 4>;
-constexpr int pop_lsb(CardStack& stack) {
-    if (stack == 0) return -1;
-    int lsb = 0;
-    CardStack bit = 1;
-    while ((stack & bit) == 0) {
-        bit <<= 1;
-        ++lsb;
-    }
-    stack &= stack - 1;
-    return lsb;
 
-}
-constexpr int lsb(const CardStack& stack) {
-    if (stack == 0) return -1;
-    int lsb = 0;
-    CardStack bit = 1;
-    while ((stack & bit) == 0) {
-        bit <<= 1;
-        ++lsb;
-    }
-    return lsb;
-}
-constexpr int popcount(CardStack stack) {
-    int count = 0;
-    while (stack != 0) {
-        stack &= stack - 1;
-        ++count;
-    }
-    return count;
-}
-Beat_Value get_beat_value(Cards card) {
-    switch (card) {
-        case Cards::Dog:
-            return Beat_Value::Dog;
-        case Cards::Mahjong:
-            return Beat_Value::Mahjong;
-        case Cards::Phoenix:
-            return Beat_Value::Phoenix;
-        case Cards::Dragon:
-            return Beat_Value::Dragon;
-        default:
-            return static_cast<Beat_Value>((static_cast<int>(card) - 3) / 4 + 2);
-    }
-}
-Beat_Value get_beat_value(CardStack stack) {
-    if (popcount(stack) != 1) {
-        throw std::invalid_argument("Stack contains more than one card, cannot determine a single card.");
-    }
-    int lsb_index = lsb(stack);
-    Cards card = static_cast<Cards>(lsb_index);
-    return get_beat_value(card);
-}
-std::string get_location_name(Locations location) {
-    switch (location) {
-        case Locations::P1Hand: return "P1Hand";
-        case Locations::P2Hand: return "P2Hand";
-        case Locations::P3Hand: return "P3Hand";
-        case Locations::P4Hand: return "P4Hand";
-        case Locations::Table: return "Table";
-        case Locations::P1Bank: return "P1Bank";
-        case Locations::P2Bank: return "P2Bank";
-        case Locations::P3Bank: return "P3Bank";
-        case Locations::P4Bank: return "P4Bank";
-        case Locations::Unkown: return "Unkown";
-        default: throw std::invalid_argument("Invalid location value.");
-    }
-}
+std::string get_location_name(Locations location);

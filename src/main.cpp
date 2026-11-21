@@ -1,14 +1,28 @@
-﻿#include "types.h"
-#include "cards.h"
-#include "game_state.h"
-#include "move_generation.h"
+﻿#include "game.h"
 
 #include <iostream>
-#include <bitset>
 #include <sstream>
 #include <string>
 
-int main() {
+int main(int argc, char* argv[]) {
+#ifdef TICHU_PROFILE_BUILD
+    bool profiling = true;
+#else
+    bool profiling = false;
+#endif
+    if (argc == 2 && std::string(argv[1]) == "--profile") {
+        profiling = true;
+    }
+    else if (argc != 1) {
+        std::cerr << "Usage: Tichu [--profile]\n";
+        return 1;
+    }
+    if (profiling) {
+        std::cout << "Profiling game: point limit 10000.\n";
+        Game game;
+        game.play_game<false>(10000);
+        return 0;
+    }
     std::string input;
     while (true) {
         int limit = 500;
